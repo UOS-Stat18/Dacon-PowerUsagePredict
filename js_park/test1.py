@@ -16,6 +16,17 @@ warnings.filterwarnings('ignore')
 
 import random
 
+#smape는 이거 변환해서 사용하면 될듯
+"""
+SMAPE() 함수는 데이터를 입력하면 SMAPE 값을 반환하는 사용자 정의 함수입니다.
+입력으로 들어가는 data는 Dataframe의 형태이며 실제 정답 값은 Real 이라는 Column으로 예측 값은 Prediction 이라는 Column으로 저장되어 있습니다.
+"""
+
+def SMAPE(data):
+    data["Symmetric Absolute Percentage Error"] = abs((data["Real"] - data["Prediction"]))/((abs(data["Real"]) + abs(data["Prediction"])) / 2) * 100
+    smape = data["Symmetric Absolute Percentage Error"].mean()
+    return smape
+
 # data check
 
 test  = pd.read_csv(r"C:\daycon\Dacon-PowerUsagePredict\dataset\test.csv")
@@ -86,7 +97,7 @@ train_1['day_cos'] = cos_transform(train_1['day'])
 #변환 후 원래 변수들 삭제
 train_1 = train_1.drop(['year', 'month', 'dayofweek', 'day'], axis=1)
 
-#체크
+#체크ㅋ
 train_1.head() # 잘 변경되었음
 
 
