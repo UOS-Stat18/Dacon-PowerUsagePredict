@@ -26,6 +26,7 @@ building  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\building_info
                         encoding="CP949")
 
 train = train[train["건물번호"] == 1]
+train["전력소비량(kWh)"].max()
 train.shape
 train_df = train[['일시','전력소비량(kWh)','기온(C)','풍속(m/s)','습도(%)']]
 test_df = train[['일시','전력소비량(kWh)','기온(C)','풍속(m/s)','습도(%)']]
@@ -222,3 +223,115 @@ class Data(Dataset):
     def __getitem__(self, idx): #마찬가지로 idx로 데이터 가져오려고 넣은거
         return self.X[idx], self.Y[idx]
     
+### Univariable ###
+### 데이터 셋 생성 ###
+
+test  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\test.csv")
+train  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\train.csv")
+building  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\building_info.csv",
+                        encoding="CP949")
+
+train = train[train["건물번호"] == 1] #일단 건물번호 1인 것에 대해서만 다룸
+train.shape
+train_df = train[['일시','전력소비량(kWh)','기온(C)','풍속(m/s)','습도(%)']]
+test_df = train[['일시','전력소비량(kWh)','기온(C)','풍속(m/s)','습도(%)']]
+
+
+window_size = 168*2
+forcast_size= 168
+batch_size = 32
+targets = '전력소비량(kWh)'
+date = '일시'
+
+train_df_fe, test_df_fe, mean_, std_ = standardization(train_df, test_df, '일시', targets)
+train_x, train_y, train_date = time_slide_df(train_df_fe, window_size, forcast_size, date, targets)
+test_x, test_y, test_date = time_slide_df(test_df_fe, window_size, forcast_size, date, targets)
+
+
+train_ds = Data(train_x[:1000], train_y[:1000])
+valid_ds = Data(train_x[1000:], train_y[1000:])
+test_ds = Data(test_x, test_y)
+
+train_dl = DataLoader(train_ds, batch_size = batch_size, shuffle=True,)
+valid_dl = DataLoader(valid_ds, batch_size = train_x[1000:].shape[0], shuffle=False)
+test_dl  = DataLoader(test_ds,  batch_size = test_x.shape[0], shuffle=False)
+
+
+### 모델 학습 ###
+train_loss_list = []
+valid_loss_list = []
+test_loss_list = []
+epoch = 50
+lr = 0.001
+DLinear_model = LTSF_DLinear(
+                            window_size=window_size,
+                            forcast_size=forcast_size,
+                            kernel_size=25,
+                            individual=False,
+                            feature_size=1,
+                            )
+criterion = torch.nn.MSELoss()
+optimizer = torch.optim.Adam(DLinear_model.parameters(), lr=lr)
+max_loss = 999999999
+
+for epoch in tqdm(range(1, epoch+1)):
+    loss_list = []
+    DLinear_model.train()
+    for batch_idx, (data, target) in enumerate(train_dl):
+        optimizer.zero_grad()
+        output = DLinear_model(data)
+        loss = criterion(output, target.unsqueeze(-1))
+        loss.backward()
+        optimizer.step()
+        loss_list.append(loss.item())    
+    train_loss_list.append(np.mean(loss_list))
+
+    DLinear_model.eval()
+    with torch.no_grad():
+        for data, target in valid_dl:
+            output = DLinear_model(data)
+            valid_loss = criterion(output, target.unsqueeze(-1))
+            valid_loss_list.append(valid_loss)
+        
+        for data, target in test_dl:
+            output = DLinear_model(data)
+            test_loss = criterion(output, target.unsqueeze(-1))
+            test_loss_list.append(test_loss)
+
+    if valid_loss < max_loss:
+        torch.save(DLinear_model, 'DLinear_model.pth')
+        max_loss = valid_loss
+        print("valid_loss={:.3f}, test_los{:.3f}, Model Save".format(valid_loss, test_loss))
+        dlinear_best_epoch = epoch
+        dlinear_best_train_loss = np.mean(loss_list)
+        dlinear_best_valid_loss = np.mean(valid_loss.item())
+        dlinear_best_test_loss = np.mean(test_loss.item())
+
+    print("epoch = {}, train_loss : {:.3f}, valid_loss : {:.3f}, test_loss : {:.3f}".format(epoch, np.mean(loss_list), valid_loss, test_loss))
+
+
+#코드 짠 사람이 결과 보는 법을 안알려줘서 이게 맞ㄴ나.....
+#smape는 몹시 낮게 나오는데.....
+#직접 짜봐야겠음음
+weights_list = {}
+weights_list['trend'] = DLinear_model.Linear_Trend.weight.detach().numpy()
+weights_list['seasonal'] = DLinear_model.Linear_Seasonal.weight.detach().numpy()
+
+DLinear_model
+#train_df_.loc[:, x] = (train_df_[x] - mean) / std
+
+weights_list['trend'].shap
+a = pd.DataFrame(pd.DataFrame(((weights_list['seasonal'] + weights_list['trend']) + mean_)*std_).T.mean(),columns=["Prediction"])
+b = pd.DataFrame(pd.DataFrame((test_y + mean_)*std_).mean().dropna(), columns=["Real"])
+a['Real'] = b['Real']
+
+
+
+def SMAPE(data):
+    data["Symmetric Absolute Percentage Error"] = abs((data["Real"] - data["Prediction"]))/((abs(data["Real"]) + abs(data["Prediction"])) / 2) * 100
+    smape = data["Symmetric Absolute Percentage Error"].mean()
+    return smape
+
+SMAPE(a)
+#0.0052047335
+
