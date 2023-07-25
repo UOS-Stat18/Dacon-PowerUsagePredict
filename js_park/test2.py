@@ -18,9 +18,9 @@ import random
 
 # data check
 
-test  = pd.read_csv(r"C:\daycon\Dacon-PowerUsagePredict\dataset\test.csv")
-train  = pd.read_csv(r"C:\daycon\Dacon-PowerUsagePredict\dataset\train.csv")
-building  = pd.read_csv(r"C:\daycon\Dacon-PowerUsagePredict\dataset\building_info.csv",
+test  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\test.csv")
+train  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\train.csv")
+building  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\building_info.csv",
                         encoding="CP949")
 
 
