@@ -41,108 +41,149 @@ train_test_y = min_max_scaler.fit_transform(train_test_y)
 train_train_x= min_max_scaler.fit_transform(train_train_x)
 train_test_x = min_max_scaler.fit_transform(train_test_x)
 
-#window 생성
-
-class windowDataset(Dataset):
-    def __init__(self, y, input_window, output_window, num_features ,stride = 1):
-        L = y.shape[0]
-        num_samples = (L - input_window - output_window) // stride + 1
-
-        X = np.zeros([input_window, num_samples, num_features])
-        Y = np.zeros([output_window, num_samples, num_features])
-
-        for i in np.arange(num_samples):
-            start_x = stride*i
-            end_x = start_x + input_window
-            X[:,i,:] = y[start_x:end_x]
-
-            start_y = stride*i + input_window
-            end_y = start_y + output_window
-            Y[:,i,:] = y[start_y:end_y]
-
-        
-        X = X.transpose((1,0,2))
-        Y = Y.transpose((1,0,2))
-
-        self.x = X
-        self.y = Y
-
-        self.len = len(X)
-
-    def __getitem__(self, i):
-        return self.x[i], self.y[i]
-    def __len__(self):
-        return self.len
-
-
-iw = 168 * 2
-ow = 168
-
-
-train_x_dataset = windowDataset(train_train_x, input_window=iw, output_window=ow,num_features=train_train_x.shape[1] ,stride=1)
-train_y_dataset = windowDataset(train_train_y, input_window=iw, output_window=ow,num_features=train_train_y.shape[1] ,stride=1)
-train_x_loader = DataLoader(train_x_dataset, batch_size=64)
-train_y_loader = DataLoader(train_y_dataset, batch_size=64)
-
-
-train_x_dataset.len
-train_y_dataset.len
-train_x_dataset[0][0].shape
-train_y_dataset[0][0].shape
-
-train_x_dataset[0][0][0].mean()
-train_y_dataset[0].permute(0,2,1)
-
-
 #수정이 필요!
 class moving_avg(torch.nn.Module): #커널사이즈 만큼 평균, stride만큼 이동, 패딩은 0
-    def __init__(self, kernel_size, stride):
+    def __init__(self, kernel_size, stride):# kernel_size는 열 개수
         super(moving_avg, self).__init__()
         self.kernel_size = kernel_size
         self.avg = torch.nn.AvgPool1d(kernel_size=kernel_size, stride=stride, padding=0)
 
     def forward(self, x): 
-        front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
+        front = torch.tensor(x[0:1, :].repeat((self.kernel_size - 1) // 2, 1))
         # 시작을 kernel_size-1 // 2 만큼 늘려줌
-        end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
+        end = torch.tensor(x[-1:, :].repeat((self.kernel_size - 1) // 2, 1))
         # 끝을 kernel_size -1 // 2 만큼 늘려줌
-        x = torch.cat([front, x, end], dim=1)
+        x = torch.cat([front, torch.tensor(x), end], dim=0)
         # cat에 dim = 1을 통해 [,*,]에서 *자리에 늘어나도록 합쳐줌
-        x = self.avg(x.permute(0, 2, 1))
+        x = self.avg(x.permute(1, 0))
         # permute()는 모든 차원들을 맞교환할 수 있다
         # 여기선 3번재, 2번째를 교환
-        x = x.permute(0, 2, 1)
+        x = x.permute(1, 0)
         # 계산 후 다시 원래대로 차원을 돌려줌
         return x
 
-temp = moving_avg(25,1)
-temp(train_test_y)
 
-
-def decompsition():
-
-
-
-
-class LTSF_DLinear(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, kernel_size, feature_size):
-        super(LTSF_DLinear, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.decompsition = kernel_size
-        self.channels = feature_size
-
-        self.Linear_Trend = torch.nn.Linear(self.input_size, self.hidden_size) #한 개 층으로 이루어진 선형변환 통과
-        self.Linear_Seasonal = torch.nn.Linear(self.input_size,  self.hidden_size)
-
+class series_decomp(torch.nn.Module):
+    def __init__(self, kernel_size):
+        super(series_decomp, self).__init__()
+        self.moving_avg = moving_avg(kernel_size, stride=1)
 
     def forward(self, x):
-        trend_init, seasonal_init = self.decompsition(x)
+        moving_mean = self.moving_avg(x)
+        residual = torch.tensor(x) - moving_mean
+        return moving_mean, residual 
+
+decomp = series_decomp(3)
+
+temp_mean, temp_res = decomp(train_train_x)
+temp_mean.shape
+
+#window 생성
+
+class windowDataset(Dataset):
+    def __init__(self, x_mean, x_res, y, slide_size, num_features_x,num_features_y ,stride = 1):
+        L = x_mean.shape[0]
+        num_samples = (L - slide_size) // stride + 1
+
+        X_M = np.zeros([slide_size, num_samples, num_features_x])
+        X_R = np.zeros([slide_size, num_samples, num_features_x])
+        Y = np.zeros([slide_size, num_samples, num_features_y])
+
+        for i in np.arange(num_samples):
+            start_x = stride*i
+            end_x = start_x + slide_size
+            X_M[:,i,:] = x_mean[start_x:end_x]
+            X_R[:,i,:] = x_res[start_x:end_x]
+            Y[:,i,:] = y[start_x:end_x]
+        
+        X_M = X_M.transpose((1,0,2))
+        X_R = X_R.transpose((1,0,2))
+        Y = Y.transpose((1,0,2))
+
+        self.x_m = X_M
+        self.x_r = X_R
+        self.y = Y
+
+        self.len = len(X_M)
+
+    def __getitem__(self, i):
+        return self.x_m[i],self.x_r[i],self.y[i]
+    def __len__(self):
+        return self.len
+
+
+slide_size = 96
+
+
+train_dataset = windowDataset(temp_mean,temp_res,train_train_y, slide_size=slide_size,num_features_x=temp_res.shape[1],num_features_y=train_train_y.shape[1] ,stride=1)
+train_loader = DataLoader(train_dataset, batch_size = 64)
+
+train_train_y.shape
+
+class LTSF_DLinear(torch.nn.Module):
+    def __init__(self, input_size, output_size):
+        super(LTSF_DLinear, self).__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+
+        self.Linear_Trend = torch.nn.Linear(self.input_size, self.output_size) #한 개 층으로 이루어진 선형변환 통과
+        self.Linear_Seasonal = torch.nn.Linear(self.input_size,  self.output_size)
+
+
+    def forward(self, x_mean, x_res):
+        trend_init, seasonal_init = x_mean, x_res
         #우선 decompsition을 통해 분해된 평균과 잔차를 추세와 계절로 받아줌
         trend_init, seasonal_init = trend_init.permute(0,2,1), seasonal_init.permute(0,2,1)
         #이후 계산의 편의를 위해 permute로 다시 차원 뒤집어줌
         trend_output = self.Linear_Trend(trend_init) # 추세에 대해 선형변환 통과
         seasonal_output = self.Linear_Seasonal(seasonal_init) # 계절에 대해 선형변환 통과
         x = seasonal_output + trend_output #분해되었던 추세(이동평균)와 계절(잔차)을 다시 더해줌
-        return x.permute(0,2,1) # 추세와 계절이 모두 forward 시작할 때 permute된 상태이므로 다시 돌려주고 반환
+        return x.permute(0,2,1) # 추세와 계절이 모두 forward 시작할 때 permute된 상태이므로 다시 돌려주고 반환    
+    
+
+#학습
+import torch.optim as optim
+
+model = LTSF_DLinear(3,1)
+
+
+learning_rate=0.01
+epoch = 100
+optimizer = optim.Adam(model.parameters(), lr = learning_rate)
+criterion = nn.L1Loss()
+
+best_valid=  float('inf')
+patient=0
+y.shape
+from tqdm import tqdm
+
+model.train()
+with tqdm(range(epoch)) as tr:
+    for i in tr:
+        total_loss = 0.0
+        for x_m,x_r,y in train_loader:
+            optimizer.zero_grad()
+            x_m = x_m.float()
+            x_r = x_r.float()
+            y = y.float()
+            output = model(x_m, x_r)
+            loss = criterion(output, y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        tr.set_postfix(loss="{0:.5f}".format(total_loss/len(train_loader)))
+        if loss<=best_valid:
+            torch.save(model, r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF.pth')
+            patient=0
+            best_valid=loss
+        else:
+            patient+=1
+            if patient>=10:
+                break
+
+model = torch.load(r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF.pth')
+
+model.eval()
+
 
