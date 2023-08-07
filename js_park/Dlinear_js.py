@@ -91,8 +91,8 @@ train = train.drop(['time', 'month', 'dayofweek', 'day'], axis=1)
 train_1 = train[train['건물번호'] == 1]
 train_1 = train_1.set_index(['일시'])
 
-train_train = train_1.iloc[:-168,:]
-train_valid = train_1.iloc[-168:]
+train_train = train_1.iloc[:-168*4,:]
+train_valid = train_1.iloc[-168*4:]
 
 
 from sklearn.preprocessing import MinMaxScaler
@@ -150,8 +150,8 @@ class windowDataset(Dataset):
         return self.len
 
 
-iw = 60
-ow = 30
+iw = 168*2
+ow = 168
 
 train_dataset = windowDataset(tt_x, tt_y, input_window=iw, output_window=ow,num_features=tt_df.shape[1] ,stride=1)
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle= False)
@@ -220,12 +220,12 @@ class LTSF_DLinear(torch.nn.Module):
   
 import torch.optim as optim
 
-model = LTSF_DLinear(60,30,1)
+model = LTSF_DLinear(336,168,1)
 decomp = series_decomp(27)
 learning_rate=0.001
 epoch = 1000
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)
-criterion = nn.L1Loss()
+criterion = nn.MSELoss()
 
 best_valid=  float('inf')
 patient=0
@@ -267,17 +267,18 @@ with tqdm(range(epoch)) as tr:
             best_valid=loss
         else:
             patient+=1
-            if patient>=10:
+            if patient>=100:
                 break
 
 model = torch.load(r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF.pth')
 
 
 tv_y.index
-predict = output[14,:,:].detach().numpy()
-min_max_scaler.inverse_transform(predict)
-real = y[14,:,:].detach().numpy()
-min_max_scaler.inverse_transform(real)
+output.shape
+predict = output[8,:,:].detach().numpy()
+predict = min_max_scaler.inverse_transform(predict)
+real = y[8,:,:].detach().numpy()
+real = min_max_scaler.inverse_transform(real)
 
 final = pd.DataFrame({'predict' : predict.flatten(), 'real' : real.flatten()})
 
@@ -289,7 +290,7 @@ plt.title("Prediction")
 plt.legend()
 plt.show()
 
-
+#예측하기
 # 1,60,30
-a,b = decomp(new_data)
-pred = model(a,b)
+#a,b = decomp(new_data)
+#pred = model(a,b)
