@@ -206,7 +206,7 @@ with tqdm(range(epoch)) as tr:
                 break
 
 
-model = torch.load(r'C:\daycon\Dacon-PowerUsagePredict\js_park\best_seq2.pth')
+model = torch.load(r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_seq2.pth')
 
 model.eval()
 
