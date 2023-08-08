@@ -321,3 +321,13 @@ plt.plot(final['predict'], label="predict")
 plt.title("Prediction")
 plt.legend()
 plt.show()
+
+# Define SMAPE loss function
+def SMAPE(true, pred):
+    return np.mean((np.abs(true-pred))/(np.abs(true) + np.abs(pred))) * 100
+
+SMAPE(real, predict)
+
+#################test
+test  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\test.csv")
+
