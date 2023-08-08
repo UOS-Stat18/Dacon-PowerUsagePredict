@@ -91,15 +91,13 @@ train = train.drop(['time', 'month', 'dayofweek', 'day'], axis=1)
 train_1 = train[train['건물번호'] == 1]
 train_1 = train_1.set_index(['일시'])
 
-train_train = train_1.iloc[:-168*4,:]
-train_valid = train_1.iloc[-168*4:]
+train_train = train_1.iloc[:-168*5,:]
+train_valid = train_1.iloc[-168*5:]
 
 
 from sklearn.preprocessing import MinMaxScaler
 min_max_scaler = MinMaxScaler()
 
-train_train[['기온(C)','강수량(mm)','풍속(m/s)','습도(%)','연면적(m2)','냉방면적(m2)']] = min_max_scaler.fit_transform(train_train[['기온(C)','강수량(mm)','풍속(m/s)','습도(%)','연면적(m2)','냉방면적(m2)']])
-train_valid[['기온(C)','강수량(mm)','풍속(m/s)','습도(%)','연면적(m2)','냉방면적(m2)']] = min_max_scaler.fit_transform(train_valid[['기온(C)','강수량(mm)','풍속(m/s)','습도(%)','연면적(m2)','냉방면적(m2)']])
 
 tt_x = train_train.drop(["전력소비량(kWh)"], axis = 1)
 tt_x.shape
@@ -115,13 +113,12 @@ tv_y = tv_y.drop(['건물번호'],axis=1)
 tt_df = pd.concat([tt_x,tt_y], axis = 1)
 tv_df = pd.concat([tv_x,tv_y], axis = 1)
 
-pd.DataFrame(tt_x[0:3].mean()).T
 ###### 데이터 로더 생성 ###########
 
 class windowDataset(Dataset):
     def __init__(self, x, y, input_window, output_window, num_features ,stride = 1):
         L = y.shape[0]
-        num_samples = (L - input_window - output_window) // stride + 1
+        num_samples = (L - input_window) // stride + 1
 
         X = np.zeros([input_window, num_samples, num_features-1])
         Y = np.zeros([output_window, num_samples, 1])
@@ -131,7 +128,7 @@ class windowDataset(Dataset):
             end_x = start_x + input_window
             X[:,i,:] = x[start_x:end_x]
 
-            start_y = stride*i + input_window
+            start_y = stride*i + input_window - output_window
             end_y = start_y + output_window
             Y[:,i,:] = y[start_y:end_y]
 
@@ -224,35 +221,10 @@ class LTSF_NLinear(torch.nn.Module):
         output= self.last_linear(x)
         return output # 추세와 계절이 모두 forward 시작할 때 permute된 상태이므로 다시 돌려주고 반환  
 
-d = x_m - x_m[:,-1:,:]
-x_m.shape
-d.shape
-x_m[:,-1,:].shape
-x_m[:,:,-1].shape
-
-'''
-a,b = decomp(i[0])
-t = a+b
-t = t.permute(0,2,1)
-t.shape
-t_l = t[:,-1,:].detach()
-t_l.shape
-t = t - t_l
-t.shape
-t.permute(0,2,1).shape
-t_lin = nn.Linear(336,168)
-t.permute(0,2,1).shape
-t= t_lin(t.float())
-t_lin(t_l.float()).shape
-z = t+t_lin(t_l.float())
-z.shape
-l_lin = nn.Linear(27,1)
-l_lin(z.permute(0,2,1)).shape
-'''
 
 import torch.optim as optim
 
-model = LTSF_NLinear(336,168,1)
+model = LTSF_NLinear(iw,ow,1)
 decomp = series_decomp(27)
 learning_rate=0.001
 epoch = 1000
@@ -294,7 +266,7 @@ with tqdm(range(epoch)) as tr:
 
         tr.set_postfix(loss="{0:.5f}".format(total_loss/len(train_loader)))
         if valid_loss<=best_valid:
-            torch.save(model, r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF_N.pth')
+            torch.save(model, r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF_ND_non.pth')
             patient=0
             best_valid=loss
         else:
@@ -302,15 +274,13 @@ with tqdm(range(epoch)) as tr:
             if patient>=400:
                 break
 
-model = torch.load(r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF_N.pth')
+model = torch.load(r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF_ND_non.pth')
 
 
 tv_y.index
 output.shape
-predict = output[8,:,:].detach().numpy()
-predict = min_max_scaler.inverse_transform(predict)
-real = y[8,:,:].detach().numpy()
-real = min_max_scaler.inverse_transform(real)
+predict = output[output.shape[0] - 1,:,:].detach().numpy()
+real = y[output.shape[0] - 1,:,:].detach().numpy()
 
 final = pd.DataFrame({'predict' : predict.flatten(), 'real' : real.flatten()})
 
@@ -322,12 +292,69 @@ plt.title("Prediction")
 plt.legend()
 plt.show()
 
-# Define SMAPE loss function
 def SMAPE(true, pred):
     return np.mean((np.abs(true-pred))/(np.abs(true) + np.abs(pred))) * 100
 
 SMAPE(real, predict)
 
-#################test
-test  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\test.csv")
 
+
+
+# test Data Preprocessing
+test  = pd.read_csv(r"C:\dacon\Dacon-PowerUsagePredict\dataset\test.csv")
+test = pd.merge(test,building, on="건물번호")
+test.drop(['태양광용량(kW)', 'ESS저장용량(kWh)', 'PCS용량(kW)'], axis=1, inplace=True) # 태양광용량, ESS저장용량, PCS용량 컬럼 제거
+#test.drop(['num_date_time', '건물번호'], axis=1, inplace=True) # num_date_time, 건물번호 컬럼 제거 
+test.drop(['num_date_time'], axis=1, inplace=True) # num_date_time 컬럼 제거 
+test['강수량(mm)'].fillna(0.0, inplace=True) # 강수량 결측치 0으로 채우기
+test['풍속(m/s)'].fillna(round(test['풍속(m/s)'].mean(),2), inplace=True) # 풍속 결측치 평균으로 채워서 반올림
+test['습도(%)'].fillna(round(test['습도(%)'].mean(),2), inplace=True) # 습도 결측치 평균으로 채워서 반올림
+
+
+strc_type = pd.get_dummies(test['건물유형']) # 건물유형 더미변수화
+test = pd.concat([test, strc_type], axis=1)
+test.drop(['건물유형'], axis=1, inplace=True)
+
+test["일시"] = pd.to_datetime(test["일시"])
+
+print(test["일시"].min(), test["일시"].max())
+
+test["time"] = test["일시"].dt.hour
+test["month"] = test["일시"].dt.month
+test["dayofweek"] = test["일시"].dt.dayofweek
+test["day"] = test["일시"].dt.day
+
+
+def sin_transform(values):
+    return np.sin(2*np.pi*values/len(set(values)))
+
+def cos_transform(values):
+    return np.cos(2*np.pi*values/len(set(values)))
+
+test['time_sin'] = sin_transform(test['time'])
+test['time_cos'] = cos_transform(test['time'])
+test['dayofweek_sin'] = sin_transform(test['dayofweek'])
+test['dayofweek_cos'] = cos_transform(test['dayofweek'])
+test['month_sin'] = sin_transform(test['month'])
+test['month_cos'] = cos_transform(test['month'])
+test['day_sin'] = sin_transform(test['day'])
+test['day_cos'] = cos_transform(test['day'])
+
+test = test.drop(['time', 'month', 'dayofweek', 'day'], axis=1)
+
+test_1 = test[test['건물번호'] == 1]
+test_1 = test_1.set_index(['일시'])
+
+test_v = train_valid[-168:].drop(['전력소비량(kWh)'], axis=1)
+test_x = pd.concat([test_v,test_1], axis = 0)
+
+
+
+model = torch.load(r'C:\dacon\Dacon-PowerUsagePredict\js_park\best_AF_ND.pth')
+test_x = torch.tensor(test_x.values).unsqueeze(0)
+test_x.shape
+
+t_m, t_r = decomp(test_x)
+out = model(t_m.float(),t_r.float())
+
+out.detach().numpy()
