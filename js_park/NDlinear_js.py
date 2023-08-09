@@ -122,7 +122,7 @@ class windowDataset(Dataset):
         L = y.shape[0]
         num_samples = (L - input_window) // stride + 1
 
-        X = np.zeros([input_window, num_samples, num_features-1])
+        X = np.zeros([input_window, num_samples, num_features])
         Y = np.zeros([output_window, num_samples, 1])
 
         for i in np.arange(num_samples):
@@ -149,13 +149,13 @@ class windowDataset(Dataset):
         return self.len
 
 
-iw = 168*2
+iw = 168*
 ow = 168
 
-train_dataset = windowDataset(tt_x, tt_y, input_window=iw, output_window=ow,num_features=tt_df.shape[1] ,stride=1)
+train_dataset = windowDataset(tt_x, tt_y, input_window=iw, output_window=ow,num_features=tt_x.shape[1] ,stride=1)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle= False)
 
-valid_dataset = windowDataset(tv_x, tv_y, input_window=iw, output_window=ow,num_features=tt_df.shape[1] ,stride=1)
+valid_dataset = windowDataset(tv_x, tv_y, input_window=iw, output_window=ow,num_features=tv_x.shape[1] ,stride=1)
 valid_loader = DataLoader(valid_dataset, batch_size=64, shuffle= False)
 
 import torch.nn as nn

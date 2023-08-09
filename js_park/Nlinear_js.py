@@ -123,7 +123,7 @@ class windowDataset(Dataset):
         L = y.shape[0]
         num_samples = (L - input_window - output_window) // stride + 1
 
-        X = np.zeros([input_window, num_samples, num_features-1])
+        X = np.zeros([input_window, num_samples, num_features])
         Y = np.zeros([output_window, num_samples, 1])
 
         for i in np.arange(num_samples):
@@ -153,10 +153,10 @@ class windowDataset(Dataset):
 iw = 168*2
 ow = 168
 
-train_dataset = windowDataset(tt_x, tt_y, input_window=iw, output_window=ow,num_features=tt_df.shape[1] ,stride=1)
+train_dataset = windowDataset(tt_x, tt_y, input_window=iw, output_window=ow,num_features=tt_x.shape[1] ,stride=1)
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle= False)
 
-valid_dataset = windowDataset(tv_x, tv_y, input_window=iw, output_window=ow,num_features=tt_df.shape[1] ,stride=1)
+valid_dataset = windowDataset(tv_x, tv_y, input_window=iw, output_window=ow,num_features=tv_x.shape[1] ,stride=1)
 valid_loader = DataLoader(valid_dataset, batch_size=32, shuffle= False)
 
 import torch.nn as nn
@@ -224,11 +224,6 @@ class LTSF_NLinear(torch.nn.Module):
         output= self.last_linear(x)
         return output # 추세와 계절이 모두 forward 시작할 때 permute된 상태이므로 다시 돌려주고 반환  
 
-d = x_m - x_m[:,-1:,:]
-x_m.shape
-d.shape
-x_m[:,-1,:].shape
-x_m[:,:,-1].shape
 
 '''
 a,b = decomp(i[0])
