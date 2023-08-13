@@ -215,12 +215,12 @@ class LTSF_NLinear(torch.nn.Module):
 
         trend_output = trend_output + t_last
         seasonal_output = seasonal_output + s_last
-        trend_output = torch.clamp(trend_output, min = -1, max = 1)
-        seasonal_output = torch.clamp(seasonal_output, min = -0.5, max = 0.5)
+        #trend_output = torch.clamp(trend_output, min = 0, max = 1)
+        #seasonal_output = torch.clamp(seasonal_output, min = 0, max = 1)
 
         x = seasonal_output + trend_output #분해되었던 추세(이동평균)와 계절(잔차)을 다시 더해줌
         output= self.last_linear(x)
-        x = torch.clamp(x, 0.001, 1.001)
+        #x = torch.clamp(x, 0.001, 1.001)
         return output # 추세와 계절이 모두 forward 시작할 때 permute된 상태이므로 다시 돌려주고 반환  
 
 import torch.optim as optim
@@ -230,6 +230,7 @@ decomp = series_decomp(11)
 learning_rate=0.002
 epoch = 50
 model = LTSF_NLinear(iw,ow,1)
+
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 criterion = nn.MSELoss()
@@ -248,8 +249,8 @@ for i in range(1,101):
     df = train[train['건물번호'] == i]
     df = df.set_index(['일시'])
 
-    df_train = df.iloc[:-168*6,:]
-    df_valid = df.iloc[-168*4:]
+    df_train = df.iloc[:-168*8,:]
+    df_valid = df.iloc[-168*2:]
 
     tt_x = df_train.drop(['건물번호',"전력소비량(kWh)"], axis = 1)
     tt_x.shape
@@ -269,8 +270,7 @@ for i in range(1,101):
     valid_loader = DataLoader(valid_dataset, batch_size=64, shuffle= False)
 
     from tqdm import tqdm
-    model = LTSF_NLinear(iw,ow,1)
-    optimizer = optim.Adam(model.parameters(), lr = learning_rate)
+
     
     with tqdm(range(epoch)) as tr:
         for j in tr:
@@ -302,7 +302,7 @@ for i in range(1,101):
                 scheduler.step(total_valid_loss/len(valid_loader))
 
             if valid_loss<=best_valid:
-                torch.save(model, 'C:\\dacon\\Dacon-PowerUsagePredict\\js_park\\saved_models\\best_AF_8.pt')
+                torch.save(model, 'C:\\dacon\\Dacon-PowerUsagePredict\\js_park\\saved_models\\best_AF_9.pt')
                 best_valid=loss
 
             
@@ -409,7 +409,7 @@ temp_df = pd.DataFrame(test['num_date_time'])
 
 wpcnf = pd.concat([temp_df,tp_df], axis = 1)
 wpcnf.columns = ['num_date_time', 'answer']
-wpcnf.to_csv(r'C:\dacon\Dacon-PowerUsagePredict\js_park\submit\test_8.csv', index = False)
+wpcnf.to_csv(r'C:\dacon\Dacon-PowerUsagePredict\js_park\submit\test_9.csv', index = False)
 
 len(smape_list)
 np.mean(smape_list) #7.540020178537816
